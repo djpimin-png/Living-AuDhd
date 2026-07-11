@@ -1,0 +1,22 @@
+{
+  "scheduled_videos": [
+    {
+      "video_id": "abc123",
+      "title": "My ADHD Productivity System",
+      "publish_date": "2024-07-15T12:00:00",
+      "priority": 5
+    },
+    {
+      "video_id": "def456",
+      "title": "AI Tools for Neurodivergent Creators",
+      "publish_date": "2024-07-22T12:00:00",
+      "priority": 4
+    },
+    {
+      "video_id": "ghi789",
+      "title": "Building Your Operating System",
+      "publish_date": "2024-07-29T12:00:00",
+      "priority": 3
+    }
+  ]
+}
