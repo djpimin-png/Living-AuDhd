@@ -1,0 +1,262 @@
+{
+  "name": "Living AuDHD - Analytics Sync",
+  "description": "Fetches YouTube analytics hourly and syncs to Master Dashboard",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerType": "interval",
+        "intervalUnit": "hours",
+        "interval": 1
+      },
+      "id": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
+      "name": "Trigger Hourly",
+      "type": "n8n-nodes-base.interval",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/youtube/v3/channels?part=statistics&mine=true",
+        "authentication": "oAuth2"
+      },
+      "id": "2b3c4d5e-6f7g-8h9i-0j1k-2l3m4n5o6p7q",
+      "name": "Get Channel Stats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&order=date&type=video&maxResults=10",
+        "authentication": "oAuth2"
+      },
+      "id": "3c4d5e6f-7g8h-9i0j-1k2l-3m4n5o6p7q8r",
+      "name": "Get Recent Videos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 450]
+    },
+    {
+      "parameters": {
+        "code": "const channelStats = $json.body1.items[0].statistics;
+const videos = $json.body2.items || [];
+
+const videoStats = videos.map(v => ({
+  video_id: v.id.videoId,
+  title: v.snippet.title,
+  published_at: v.snippet.publishedAt,
+  thumbnail: v.snippet.thumbnails.default.url
+}));
+
+return {
+  channel_subscribers: channelStats.subscriberCount,
+  total_videos: channelStats.videoCount,
+  total_views: channelStats.viewCount,
+  videos: videoStats,
+  sync_time: new Date().toISOString()
+};"
+      },
+      "id": "4d5e6f7g-8h9i-0j1k-2l3m-4n5o6p7q8r9s",
+      "name": "Process Analytics Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [650, 350]
+    },
+    {
+      "parameters": {
+        "spreadsheetId": "={{ $env.MASTER_DASHBOARD_ID }}",
+        "range": "Dashboard!B2:D2",
+        "values": "=[
+  [
+    $json.channel_subscribers,
+    $json.total_videos,
+    $json.total_views
+  ]
+]"
+      },
+      "id": "5e6f7g8h-9i0j-1k2l-3m4n-5o6p7q8r9s0t",
+      "name": "Update Dashboard KPIs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [850, 250]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/youtube/v3/videos?part=statistics",
+        "authentication": "oAuth2",
+        "bodyParametersUi": "keyvalue",
+        "bodyParameters": []
+      },
+      "id": "6f7g8h9i-0j1k-2l3m-4n5o-6p7q8r9s0t1u",
+      "name": "Get Video Statistics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 450]
+    },
+    {
+      "parameters": {
+        "spreadsheetId": "={{ $env.MASTER_DASHBOARD_ID }}",
+        "range": "Analytics!A:H"
+      },
+      "id": "7g8h9i0j-1k2l-3m4n-5o6p-7q8r9s0t1u2v",
+      "name": "Log Analytics to Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [1050, 350]
+    },
+    {
+      "parameters": {
+        "code": "const stats = $json.channel_subscribers;
+const threshold = 1000;
+
+if (stats > threshold) {
+  return {
+    alert: true,
+    message: `Milestone reached! You now have ${stats} subscribers!`,
+    type: 'success'
+  };
+}
+
+return { alert: false };"
+      },
+      "id": "8h9i0j1k-2l3m-4n5o-6p7q-8r9s0t1u2v3w",
+      "name": "Check Milestones",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1050, 550]
+    },
+    {
+      "parameters": {
+        "toEmail": "{{ $env.NOTIFICATION_EMAIL }}",
+        "subject": "🎉 {{ $json.message }}",
+        "textContent": "{{ $json.message }}"
+      },
+      "id": "9i0j1k2l-3m4n-5o6p-7q8r-9s0t1u2v3w4x",
+      "name": "Send Milestone Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1250, 550],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "toEmail": "{{ $env.NOTIFICATION_EMAIL }}",
+        "subject": "📊 Analytics Sync Complete",
+        "textContent": "Analytics synced at {{ $json.sync_time }}\n\nSubscribers: {{ $json.channel_subscribers }}\nTotal Videos: {{ $json.total_videos }}\nTotal Views: {{ $json.total_views }}"
+      },
+      "id": "0j1k2l3m-4n5o-6p7q-8r9s-0t1u2v3w4x5y",
+      "name": "Send Sync Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1250, 350]
+    }
+  ],
+  "connections": {
+    "Trigger Hourly": {
+      "main": [
+        [
+          {
+            "node": "Get Channel Stats",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Recent Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Channel Stats": {
+      "main": [
+        [
+          {
+            "node": "Process Analytics Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Recent Videos": {
+      "main": [
+        [
+          {
+            "node": "Process Analytics Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Analytics Data": {
+      "main": [
+        [
+          {
+            "node": "Update Dashboard KPIs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Video Statistics",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Milestones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Dashboard KPIs": {
+      "main": [
+        [
+          {
+            "node": "Log Analytics to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Video Statistics": {
+      "main": [
+        [
+          {
+            "node": "Log Analytics to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Analytics to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Send Sync Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Milestones": {
+      "main": [
+        [
+          {
+            "node": "Send Milestone Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

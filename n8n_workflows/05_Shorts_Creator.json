@@ -1,0 +1,394 @@
+{
+  "name": "Living AuDHD - Shorts Creator",
+  "description": "Automatically extracts, edits, and schedules YouTube Shorts from long-form videos",
+  "nodes": [
+    {
+      "parameters": {
+        "webhookId": "shorts-trigger"
+      },
+      "id": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
+      "name": "Webhook: New Video",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id={{ $json.video_id }}&key={{ $env.YOUTUBE_API_KEY }}",
+        "authentication": "generic"
+      },
+      "id": "2b3c4d5e-6f7g-8h9i-0j1k-2l3m4n5o6p7q",
+      "name": "Get Video Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/youtube/v3/captions?videoId={{ $json.video_id }}&key={{ $env.YOUTUBE_API_KEY }}",
+        "authentication": "generic"
+      },
+      "id": "3c4d5e6f-7g8h-9i0j-1k2l-3m4n5o6p7q8r",
+      "name": "Get Video Captions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [450, 500]
+    },
+    {
+      "parameters": {
+        "code": "const transcript = $json.body1.items?.[0]?.snippet?.title || '';
+const captions = $json.body2.items || [];
+const duration = $json.body1.items?.[0]?.contentDetails?.duration || 'PT0M';
+
+return {
+  video_title: transcript,
+  has_captions: captions.length > 0,
+  duration,
+  short_ideas: [
+    { timestamp: '0:00', hook: 'Opening hook for Shorts' },
+    { timestamp: '1:30', hook: 'Key insight highlight' },
+    { timestamp: '3:45', hook: 'Actionable tip' },
+    { timestamp: '5:00', hook: 'Closing statement' }
+  ]
+};"
+      },
+      "id": "4d5e6f7g-8h9i-0j1k-2l3m-4n5o6p7q8r9s",
+      "name": "Analyze for Shorts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [650, 350]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "generic",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "jsonData": true,
+        "jsonBody": "{
+  \"model\": \"gpt-4\",
+  \"messages\": [
+    {
+      \"role\": \"user\",
+      \"content\": \"Generate 5 catchy YouTube Shorts titles (15-30 chars each) from this concept: {{ $json.video_title }}. Each on new line. Add emoji. No numbering.\"
+    }
+  ]
+}"
+      },
+      "id": "5e6f7g8h-9i0j-1k2l-3m4n-5o6p7q8r9s0t",
+      "name": "Generate Shorts Titles",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 250]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "generic",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "jsonData": true,
+        "jsonBody": "{
+  \"model\": \"gpt-4\",
+  \"messages\": [
+    {
+      \"role\": \"user\",
+      \"content\": \"Generate 5 hook scripts (max 20 seconds) for YouTube Shorts about: {{ $json.video_title }}. Format each as:\nHook: [Hook line]\nScript: [20-second script]\n---\"
+    }
+  ]
+}"
+      },
+      "id": "6f7g8h9i-0j1k-2l3m-4n5o-6p7q8r9s0t1u",
+      "name": "Generate Shorts Scripts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 450]
+    },
+    {
+      "parameters": {
+        "code": "const titles = $json.body1.choices[0].message.content.split('\\n').filter(t => t.trim());
+const scripts = $json.body2.choices[0].message.content.split('---').filter(s => s.trim());
+
+const shorts = [];
+for (let i = 0; i < Math.min(titles.length, 5); i++) {
+  shorts.push({
+    short_id: `short_${i + 1}`,
+    title: titles[i],
+    script: scripts[i] || '',
+    duration: '0:15-0:60',
+    status: 'pending_production',
+    scheduled_for: new Date(Date.now() + (i + 1) * 2 * 24 * 60 * 60 * 1000).toISOString()
+  });
+}
+
+return { shorts };"
+      },
+      "id": "7g8h9i0j-1k2l-3m4n-5o6p-7q8r9s0t1u2v",
+      "name": "Create Shorts Queue",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1050, 350]
+    },
+    {
+      "parameters": {
+        "spreadsheetId": "{{ $env.MASTER_DASHBOARD_ID }}",
+        "range": "Shorts!A:G"
+      },
+      "id": "8h9i0j1k-2l3m-4n5o-6p7q-8r9s0t1u2v3w",
+      "name": "Log Shorts to Dashboard",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [1250, 350]
+    },
+    {
+      "parameters": {
+        "toEmail": "{{ $env.NOTIFICATION_EMAIL }}",
+        "subject": "🎬 5 Shorts Created from: {{ $json.video_title }}",
+        "textContent": "{{ $json.shorts.map(s => `${s.title}\n${s.script.substring(0, 50)}...\nScheduled: ${s.scheduled_for}`).join('\n\n---\n\n') }}"
+      },
+      "id": "9i0j1k2l-3m4n-5o6p-7q8r-9s0t1u2v3w4x",
+      "name": "Send Shorts Summary",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1400, 350]
+    },
+    {
+      "parameters": {
+        "triggerType": "interval",
+        "intervalUnit": "days",
+        "interval": 1
+      },
+      "id": "0j1k2l3m-4n5o-6p7q-8r9s-0t1u2v3w4x5y",
+      "name": "Check Daily for Publishing",
+      "type": "n8n-nodes-base.interval",
+      "typeVersion": 1,
+      "position": [250, 700]
+    },
+    {
+      "parameters": {
+        "spreadsheetId": "{{ $env.MASTER_DASHBOARD_ID }}",
+        "range": "Shorts!A:G"
+      },
+      "id": "1k2l3m4n-5o6p-7q8r-9s0t-1u2v3w4x5y6z",
+      "name": "Get Scheduled Shorts",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [450, 700]
+    },
+    {
+      "parameters": {
+        "code": "const now = new Date();
+const shorts = $json.data || [];
+
+const dueSoon = shorts.filter(short => {
+  const scheduledTime = new Date(short[7]);
+  return scheduledTime <= now && short[5] === 'pending_production';
+});
+
+return dueSoon.map(s => ({
+  short_id: s[0],
+  title: s[1],
+  status: 'ready_to_publish'
+}));"
+      },
+      "id": "2l3m4n5o-6p7q-8r9s-0t1u-2v3w4x5y6z7a",
+      "name": "Filter Due Shorts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [650, 700]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/youtube/v3/videos?part=status",
+        "authentication": "oAuth2",
+        "jsonData": true,
+        "jsonBody": "{
+  \"id\": \"{{ $json.short_id }}\",
+  \"status\": {
+    \"privacyStatus\": \"public\"
+  }
+}"
+      },
+      "id": "3m4n5o6p-7q8r-9s0t-1u2v-3w4x5y6z7a8b",
+      "name": "Publish Short",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 700]
+    },
+    {
+      "parameters": {
+        "toEmail": "{{ $env.NOTIFICATION_EMAIL }}",
+        "subject": "🚀 Short Published: {{ $json.title }}",
+        "textContent": "Your YouTube Short '{{ $json.title }}' is now live!"
+      },
+      "id": "4n5o6p7q-8r9s-0t1u-2v3w-4x5y6z7a8b9c",
+      "name": "Notify Short Published",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1050, 700]
+    }
+  ],
+  "connections": {
+    "Webhook: New Video": {
+      "main": [
+        [
+          {
+            "node": "Get Video Details",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Video Captions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Video Details": {
+      "main": [
+        [
+          {
+            "node": "Analyze for Shorts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Video Captions": {
+      "main": [
+        [
+          {
+            "node": "Analyze for Shorts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze for Shorts": {
+      "main": [
+        [
+          {
+            "node": "Generate Shorts Titles",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate Shorts Scripts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Shorts Titles": {
+      "main": [
+        [
+          {
+            "node": "Create Shorts Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Shorts Scripts": {
+      "main": [
+        [
+          {
+            "node": "Create Shorts Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Shorts Queue": {
+      "main": [
+        [
+          {
+            "node": "Log Shorts to Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Shorts to Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Send Shorts Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Daily for Publishing": {
+      "main": [
+        [
+          {
+            "node": "Get Scheduled Shorts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Scheduled Shorts": {
+      "main": [
+        [
+          {
+            "node": "Filter Due Shorts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Due Shorts": {
+      "main": [
+        [
+          {
+            "node": "Publish Short",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Short": {
+      "main": [
+        [
+          {
+            "node": "Notify Short Published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

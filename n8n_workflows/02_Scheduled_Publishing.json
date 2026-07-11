@@ -1,0 +1,213 @@
+{
+  "name": "Living AuDHD - Scheduled Publishing",
+  "description": "Checks publishing queue and automatically publishes videos at scheduled times",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerType": "interval",
+        "intervalUnit": "minutes",
+        "interval": 5
+      },
+      "id": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
+      "name": "Check Schedule Every 5 Min",
+      "type": "n8n-nodes-base.interval",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "spreadsheetId": "={{ $env.MASTER_DASHBOARD_ID }}",
+        "range": "Publishing Calendar!A:L"
+      },
+      "id": "2b3c4d5e-6f7g-8h9i-0j1k-2l3m4n5o6p7q",
+      "name": "Get Publishing Queue",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "code": "const now = new Date();
+const queue = $json.data || [];
+
+const dueSoon = queue.filter(video => {
+  const publishTime = new Date(video[5]);
+  const timeDiff = publishTime - now;
+  return timeDiff > 0 && timeDiff < 5 * 60 * 1000;
+});
+
+return dueSoon.map(v => ({
+  video_id: v[0],
+  title: v[1],
+  publish_date: v[5],
+  priority: v[7] || 3
+}));"
+      },
+      "id": "3c4d5e6f-7g8h-9i0j-1k2l-3m4n5o6p7q8r",
+      "name": "Filter Due Videos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/youtube/v3/videos",
+        "authentication": "oAuth2",
+        "headers": {},
+        "bodyParametersUi": "keyvalue",
+        "bodyParameters": [
+          {
+            "name": "part",
+            "value": "status"
+          },
+          {
+            "name": "videoId",
+            "value": "={{ $json.video_id }}"
+          },
+          {
+            "name": "privacyStatus",
+            "value": "public"
+          }
+        ]
+      },
+      "id": "4d5e6f7g-8h9i-0j1k-2l3m-4n5o6p7q8r9s",
+      "name": "Publish Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "spreadsheetId": "={{ $env.MASTER_DASHBOARD_ID }}",
+        "range": "Publishing Calendar!H{{ $json.row_index }}",
+        "value": "published"
+      },
+      "id": "5e6f7g8h-9i0j-1k2l-3m4n-5o6p7q8r9s0t",
+      "name": "Update Status to Published",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "spreadsheetId": "={{ $env.MASTER_DASHBOARD_ID }}",
+        "range": "Analytics!A:H",
+        "values": "=[
+  [
+    $json.video_id,
+    $json.title,
+    'Published',
+    'published',
+    $json.publish_date,
+    0,
+    0,
+    0
+  ]
+]"
+      },
+      "id": "6f7g8h9i-0j1k-2l3m-4n5o-6p7q8r9s0t1u",
+      "name": "Log to Analytics",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [1050, 450]
+    },
+    {
+      "parameters": {
+        "toEmail": "={{ $env.NOTIFICATION_EMAIL }}",
+        "subject": "🚀 Video Published: {{ $json.title }}",
+        "textContent": "Your video '{{ $json.title }}' has been published!\n\nVideo ID: {{ $json.video_id }}\nPublish Time: {{ $json.publish_date }}\n\nView it here: https://youtu.be/{{ $json.video_id }}"
+      },
+      "id": "7g8h9i0j-1k2l-3m4n-5o6p-7q8r9s0t1u2v",
+      "name": "Send Publish Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "toEmail": "{{ $env.NOTIFICATION_EMAIL }}",
+        "subject": "ℹ️ Publishing Queue Status",
+        "textContent": "Queue check completed. {{ $json.length }} videos ready to publish in next 5 minutes."
+      },
+      "id": "8h9i0j1k-2l3m-4n5o-6p7q-8r9s0t1u2v3w",
+      "name": "Queue Status Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [850, 600]
+    }
+  ],
+  "connections": {
+    "Check Schedule Every 5 Min": {
+      "main": [
+        [
+          {
+            "node": "Get Publishing Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Publishing Queue": {
+      "main": [
+        [
+          {
+            "node": "Filter Due Videos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Due Videos": {
+      "main": [
+        [
+          {
+            "node": "Publish Video",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Queue Status Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Video": {
+      "main": [
+        [
+          {
+            "node": "Update Status to Published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status to Published": {
+      "main": [
+        [
+          {
+            "node": "Log to Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Analytics": {
+      "main": [
+        [
+          {
+            "node": "Send Publish Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

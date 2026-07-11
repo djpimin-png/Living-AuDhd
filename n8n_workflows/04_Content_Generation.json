@@ -1,0 +1,292 @@
+{
+  "name": "Living AuDHD - Content Generation",
+  "description": "Auto-generates SEO metadata, descriptions, tags, and chapters for videos",
+  "nodes": [
+    {
+      "parameters": {
+        "webhookId": "content-generation-trigger"
+      },
+      "id": "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "code": "// Parse incoming video metadata
+const topic = $json.topic || '';
+const keywords = ($json.keywords || '').split(',').map(k => k.trim()).filter(k => k);
+
+return {
+  topic,
+  keywords,
+  audience: $json.audience || 'neurodivergent_creators',
+  style: $json.style || 'conversational'
+};"
+      },
+      "id": "2b3c4d5e-6f7g-8h9i-0j1k-2l3m4n5o6p7q",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "generic",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "jsonData": true,
+        "jsonBody": "{
+  \"model\": \"gpt-4\",
+  \"messages\": [
+    {
+      \"role\": \"user\",
+      \"content\": \"Generate an optimized YouTube title for: {{ $json.topic }}. Make it engaging with curiosity gap. Max 60 chars. Just the title, nothing else.\"
+    }
+  ]
+}"
+      },
+      "id": "3c4d5e6f-7g8h-9i0j-1k2l-3m4n5o6p7q8r",
+      "name": "Generate Title",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "generic",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "jsonData": true,
+        "jsonBody": "{
+  \"model\": \"gpt-4\",
+  \"messages\": [
+    {
+      \"role\": \"user\",
+      \"content\": \"Create a YouTube description for a video about {{ $json.topic }}. Include:\n- Hook (2-3 sentences)\n- Key points (bullets)\n- CTA\n- Keywords: {{ $json.keywords }}\n\nFormat it for YouTube with emojis.\"
+    }
+  ]
+}"
+      },
+      "id": "4d5e6f7g-8h9i-0j1k-2l3m-4n5o6p7q8r9s",
+      "name": "Generate Description",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 350]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "generic",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "jsonData": true,
+        "jsonBody": "{
+  \"model\": \"gpt-4\",
+  \"messages\": [
+    {
+      \"role\": \"user\",
+      \"content\": \"Generate 25-30 YouTube tags for: {{ $json.topic }}\nKeywords: {{ $json.keywords }}\nFormat: comma-separated list only, no explanations\"
+    }
+  ]
+}"
+      },
+      "id": "5e6f7g8h-9i0j-1k2l-3m4n-5o6p7q8r9s0t",
+      "name": "Generate Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 500]
+    },
+    {
+      "parameters": {
+        "code": "const title = $json.body1.choices[0].message.content;
+const description = $json.body2.choices[0].message.content;
+const tags = $json.body3.choices[0].message.content.split(',').map(t => t.trim());
+
+return {
+  title: title.replace(/^[\"']|[\"']$/g, ''),
+  description,
+  tags,
+  generated_at: new Date().toISOString()
+};"
+      },
+      "id": "6f7g8h9i-0j1k-2l3m-4n5o-6p7q8r9s0t1u",
+      "name": "Combine Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [850, 350]
+    },
+    {
+      "parameters": {
+        "spreadsheetId": "{{ $env.MASTER_DASHBOARD_ID }}",
+        "range": "SEO Library!A:E",
+        "values": "=[
+  [
+    $json.generated_at,
+    $json.title,
+    $json.description.substring(0, 100),
+    $json.tags.join(', '),
+    ''
+  ]
+]"
+      },
+      "id": "7g8h9i0j-1k2l-3m4n-5o6p-7q8r9s0t1u2v",
+      "name": "Save to SEO Library",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [1050, 350]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "{{ $json.webhook_url }}",
+        "jsonData": true,
+        "jsonBody": "{{ $json }}"
+      },
+      "id": "8h9i0j1k-2l3m-4n5o-6p7q-8r9s0t1u2v3w",
+      "name": "Return Generated Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1250, 350]
+    },
+    {
+      "parameters": {
+        "toEmail": "{{ $env.NOTIFICATION_EMAIL }}",
+        "subject": "✍️ Metadata Generated: {{ $json.title }}",
+        "textContent": "Title: {{ $json.title }}\n\nDescription Preview:\n{{ $json.description.substring(0, 200) }}...\n\nTags ({{ $json.tags.length }}): {{ $json.tags.slice(0, 5).join(', ') }}..."
+      },
+      "id": "9i0j1k2l-3m4n-5o6p-7q8r-9s0t1u2v3w4x",
+      "name": "Send Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1250, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Generate Title",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate Description",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Generate Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Title": {
+      "main": [
+        [
+          {
+            "node": "Combine Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Description": {
+      "main": [
+        [
+          {
+            "node": "Combine Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Tags": {
+      "main": [
+        [
+          {
+            "node": "Combine Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Metadata": {
+      "main": [
+        [
+          {
+            "node": "Save to SEO Library",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to SEO Library": {
+      "main": [
+        [
+          {
+            "node": "Return Generated Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Generated Metadata": {
+      "main": [
+        [
+          {
+            "node": "Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
