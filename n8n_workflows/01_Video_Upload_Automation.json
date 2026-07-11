@@ -1,0 +1,160 @@
+{
+  "name": "Living AuDHD - Video Upload Automation",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "4b1c7d6f-8a2e-4c3f-9b1a-2d5e6f7g8h9i",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "upload-trigger"
+    },
+    {
+      "parameters": {
+        "jsonData": "={{ $json }}"
+      },
+      "id": "5c2d8e7g-9b3f-5d4g-0c2b-3e6f7g8h9i0j",
+      "name": "Parse Video Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "pythonPath": "/usr/bin/python3",
+        "scriptPath": "/app/youtube_automation/uploader.py",
+        "args": "={{ $json.file_path + ' ' + $json.title }}"
+      },
+      "id": "6d3e9f8h-0c4g-6e5h-1d3c-4f7g8h9i0j1k",
+      "name": "Upload Video",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "spreadsheetId": "={{ $env.MASTER_DASHBOARD_ID }}",
+        "range": "Analytics!A:H",
+        "values": "=[\n  [\n    $json.video_id,\n    $json.title,\n    $json.category,\n    'published',\n    $json.publish_date,\n    0,\n    0,\n    0\n  ]\n]"
+      },
+      "id": "7e4f0g9i-1d5h-7f6i-2e4d-5g8h9i0j1k2l",
+      "name": "Log to Master Dashboard",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [
+        850,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "toEmail": "={{ $env.NOTIFICATION_EMAIL }}",
+        "subject": "✅ Video Uploaded: {{ $json.title }}",
+        "textContent": "Video ID: {{ $json.video_id }}\nTitle: {{ $json.title }}\nStatus: Published"
+      },
+      "id": "8f5g1h0j-2e6i-8g7j-3f5e-6h9i0j1k2l3m",
+      "name": "Send Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Video upload failed"
+      },
+      "id": "9g6h2i1k-3f7j-9h8k-4g6f-7i0j1k2l3m4n",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        650,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "toEmail": "{{ $env.NOTIFICATION_EMAIL }}",
+        "subject": "❌ Video Upload Failed: {{ $json.title }}",
+        "textContent": "Error: {{ $json.error }}"
+      },
+      "id": "0h7i3j2l-4g8k-0i9l-5h7g-8j1k2l3m4n5o",
+      "name": "Error Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [
+        850,
+        450
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Video Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Video Data": {
+      "main": [
+        [
+          {
+            "node": "Upload Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Video": {
+      "main": [
+        [
+          {
+            "node": "Log to Master Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Master Dashboard": {
+      "main": [
+        [
+          {
+            "node": "Send Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Error Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
